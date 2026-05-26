@@ -319,16 +319,27 @@ async function refreshData() {
   setStatus(`正在读取 ${selected.length} 个城市的天气数据...`);
 
   try {
-    const results = await Promise.all(selected.map(([name, lat, lon]) => fetchCityWithRetry(name, lat, lon)));
+    const settled = await mapWithConcurrency(selected, 4, ([name, lat, lon]) => fetchCityWithRetry(name, lat, lon));
+    const results = settled.filter((item) => item.status === "fulfilled").map((item) => item.value);
+    const failed = settled.length - results.length;
+    if (!results.length) throw new Error("所有城市天气接口均读取失败，请稍后重试或检查网络代理。");
     state.data = results;
+    cacheWeatherData(results);
     if (!state.selectedCities.has(state.chartCity)) {
       state.chartCity = results[0]?.city ?? "南宁";
       els.chartCitySelect.value = state.chartCity;
     }
     renderAll();
-    setStatus(`已更新 ${results.length} 个城市，数据时间 ${formatDateTime(new Date())}`);
+    setStatus(`已更新 ${results.length} 个城市${failed ? `，${failed} 个城市暂时失败` : ""}，数据时间 ${formatDateTime(new Date())}`);
   } catch (error) {
-    setStatus(`读取失败：${error.message}`);
+    const cached = readWeatherCache();
+    if (cached.length) {
+      state.data = cached;
+      renderAll();
+      setStatus(`天气接口暂时不可用，已显示上次缓存数据。原因：${error.message}`);
+    } else {
+      setStatus(`读取失败：${error.message}`);
+    }
   } finally {
     setLoading(false);
   }
@@ -348,6 +359,17 @@ async function fetchCityWithRetry(city, latitude, longitude, retries = 3) {
 }
 
 async function fetchCity(city, latitude, longitude) {
+  try {
+    return await fetchCityForSelectedDate(city, latitude, longitude);
+  } catch (error) {
+    if (state.selectedDate === isoDate(new Date())) {
+      return fetchCityForecast(city, latitude, longitude);
+    }
+    throw error;
+  }
+}
+
+async function fetchCityForSelectedDate(city, latitude, longitude) {
   const startDate = state.selectedDate || isoDate(new Date());
   const endDate = addDays(startDate, 1);
   const params = new URLSearchParams({
@@ -362,11 +384,24 @@ async function fetchCity(city, latitude, longitude) {
     wind_speed_unit: "ms",
   });
 
-  const response = await fetch(`${API_URL}?${params.toString()}`);
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status}`);
-  }
-  const payload = await response.json();
+  const payload = await fetchJson(`${API_URL}?${params.toString()}`);
+  return normalizeCityData(city, payload);
+}
+
+async function fetchCityForecast(city, latitude, longitude) {
+  const params = new URLSearchParams({
+    latitude,
+    longitude,
+    current: CURRENT_FIELDS.join(","),
+    hourly: HOURLY_FIELDS.join(","),
+    daily: DAILY_FIELDS.join(","),
+    timezone: TIMEZONE,
+    forecast_hours: String(DASHBOARD_HOURS),
+    forecast_days: "7",
+    wind_speed_unit: "ms",
+  });
+
+  const payload = await fetchJson(`${API_URL}?${params.toString()}`);
   return normalizeCityData(city, payload);
 }
 
@@ -1316,6 +1351,53 @@ function addDays(dateText, days) {
 
 function rowsForDate(rows, dateText) {
   return rows.filter((row) => String(row.time ?? "").startsWith(dateText));
+}
+
+async function fetchJson(url, timeoutMs = 15000) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return await response.json();
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function mapWithConcurrency(items, limit, worker) {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+  const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (nextIndex < items.length) {
+      const currentIndex = nextIndex;
+      nextIndex += 1;
+      try {
+        results[currentIndex] = { status: "fulfilled", value: await worker(items[currentIndex], currentIndex) };
+      } catch (reason) {
+        results[currentIndex] = { status: "rejected", reason };
+      }
+    }
+  });
+  await Promise.all(runners);
+  return results;
+}
+
+function cacheWeatherData(data) {
+  try {
+    localStorage.setItem("gx-weather-cache", JSON.stringify({ savedAt: Date.now(), data }));
+  } catch {
+    // Cache is optional.
+  }
+}
+
+function readWeatherCache() {
+  try {
+    const cache = JSON.parse(localStorage.getItem("gx-weather-cache") || "{}");
+    return Array.isArray(cache.data) ? cache.data : [];
+  } catch {
+    return [];
+  }
 }
 
 function formatDateTime(date) {
