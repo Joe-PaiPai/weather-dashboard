@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>广西电力市场天气看板</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="城市筛选">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true">GX</div>
+          <div>
+            <h1>广西电力天气</h1>
+            <p>Open-Meteo 实时数据</p>
+            <p class="credit">嘉宇制作</p>
+          </div>
+        </div>
+
+        <section class="control-section">
+          <div class="section-title">城市范围</div>
+          <div class="city-actions">
+            <button class="small-button" id="selectAllBtn" type="button">全选</button>
+            <button class="small-button" id="clearBtn" type="button">清空</button>
+          </div>
+          <div class="city-list" id="cityList"></div>
+        </section>
+
+        <section class="control-section">
+          <div class="section-title">市场视角</div>
+          <div class="legend-row"><span class="dot load"></span>负荷：温度、体感、湿度</div>
+          <div class="legend-row"><span class="dot solar"></span>辐照：短波、直接、散射</div>
+          <div class="legend-row"><span class="dot wind"></span>风电：风速、阵风、风向</div>
+          <div class="legend-row"><span class="dot risk"></span>风险：降水、雷暴、强风</div>
+        </section>
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Power Market Weather Monitor</p>
+            <h2>广西区域供需与新能源气象看板</h2>
+          </div>
+          <div class="topbar-actions">
+            <button class="secondary-button" id="exportBtn" type="button">导出 CSV</button>
+            <button class="primary-button" id="refreshBtn" type="button">刷新数据</button>
+          </div>
+        </header>
+
+        <div class="status-line" id="statusLine">等待读取数据</div>
+
+        <div class="page-switch" role="tablist" aria-label="界面切换">
+          <button class="page-tab active" id="dashboardModeBtn" type="button">实时看板</button>
+          <button class="page-tab" id="compareModeBtn" type="button">日期对比</button>
+          <button class="page-tab" id="overviewModeBtn" type="button">广西总览</button>
+          <button class="page-tab" id="spotModeBtn" type="button">现货数据</button>
+        </div>
+
+        <section id="dashboardView">
+        <section class="metrics-grid" aria-label="全区摘要">
+          <article class="metric load-band">
+            <span>最高体感温度</span>
+            <strong id="maxFeel">--</strong>
+            <small>72 小时负荷压力</small>
+          </article>
+          <article class="metric solar-band">
+            <span>最大短波辐射</span>
+            <strong id="maxRadiation">--</strong>
+            <small>辐照资源强度</small>
+          </article>
+          <article class="metric wind-band">
+            <span>最大阵风</span>
+            <strong id="maxGust">--</strong>
+            <small>风电与运行风险</small>
+          </article>
+          <article class="metric risk-band">
+            <span>最大降水概率</span>
+            <strong id="maxRainProb">--</strong>
+            <small>天气扰动风险</small>
+          </article>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <h3 id="tableTitle">城市当前天气</h3>
+              <p id="tableSubtitle">按电力市场关注度排序，突出负荷和运行风险。</p>
+            </div>
+            <div class="view-tabs" role="tablist" aria-label="数据视图">
+              <button class="tab-button active" data-view="current" type="button">当前</button>
+              <button class="tab-button" data-view="hourly" type="button">72 小时</button>
+              <button class="tab-button" data-view="daily" type="button">7 天</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead id="tableHead"></thead>
+              <tbody id="tableBody"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="two-column">
+          <article class="panel chart-panel">
+            <div class="panel-head compact">
+              <div>
+                <h3>72 小时趋势</h3>
+                <p id="chartCityLabel">选择城市查看温度、辐射、风速。</p>
+              </div>
+              <select id="chartCitySelect" aria-label="趋势城市"></select>
+            </div>
+            <div class="chart-stats" id="chartStats"></div>
+            <canvas id="trendCanvas" width="920" height="360" aria-label="天气趋势图"></canvas>
+          </article>
+
+          <article class="panel">
+            <div class="panel-head compact">
+              <div>
+                <h3>市场提示</h3>
+                <p>根据天气数据自动生成的观察点。</p>
+              </div>
+            </div>
+            <div class="insight-list" id="insightList"></div>
+          </article>
+        </section>
+        </section>
+
+        <section class="compare-view hidden" id="compareView">
+          <article class="panel compare-panel">
+            <div class="panel-head">
+              <div>
+                <h3>日期区间对比</h3>
+                <p>选择一个城市和两个日期或日期区间，对比负荷、辐照、风况和降水变化。</p>
+              </div>
+              <button class="primary-button" id="compareBtn" type="button">开始对比</button>
+            </div>
+
+            <div class="compare-form">
+              <label>
+                <span>城市</span>
+                <select id="compareCitySelect"></select>
+              </label>
+              <label>
+                <span>A 开始日期</span>
+                <input id="periodAStart" type="date" />
+              </label>
+              <label>
+                <span>A 结束日期</span>
+                <input id="periodAEnd" type="date" />
+              </label>
+              <label>
+                <span>B 开始日期</span>
+                <input id="periodBStart" type="date" />
+              </label>
+              <label>
+                <span>B 结束日期</span>
+                <input id="periodBEnd" type="date" />
+              </label>
+            </div>
+
+            <div class="compare-note" id="compareStatus">
+              支持历史日期和未来 16 天内的预报日期；单日对比时开始/结束日期选同一天即可。
+            </div>
+          </article>
+
+          <section class="compare-grid" id="compareMetrics"></section>
+
+          <section class="two-column compare-columns">
+            <article class="panel">
+              <div class="panel-head compact">
+                <div>
+                  <h3>区间指标</h3>
+                  <p>均值用于负荷和风况，累计值用于降水和辐照。</p>
+                </div>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead id="compareTableHead"></thead>
+                  <tbody id="compareTableBody"></tbody>
+                </table>
+              </div>
+            </article>
+
+            <article class="panel">
+              <div class="panel-head compact">
+                <div>
+                  <h3>自动分析</h3>
+                  <p>围绕电力市场的天气驱动变化。</p>
+                </div>
+              </div>
+              <div class="insight-list" id="compareInsights"></div>
+            </article>
+          </section>
+        </section>
+
+        <section class="overview-view hidden" id="overviewView">
+          <article class="panel">
+            <div class="panel-head">
+              <div>
+                <h3>广西整日三时段气象总结</h3>
+                <p>按全区 14 个地级市聚合，分夜间、白天、晚高峰三个时段观察负荷、辐照、风况和降水。</p>
+              </div>
+              <div class="overview-actions">
+                <input id="overviewDate" type="date" />
+                <button class="primary-button" id="overviewBtn" type="button">生成总览</button>
+              </div>
+            </div>
+            <div class="compare-note" id="overviewStatus">选择日期后生成广西整体气象总结。</div>
+          </article>
+
+          <section class="period-grid" id="periodGrid"></section>
+
+          <section class="map-layout">
+            <article class="panel map-panel">
+              <div class="panel-head compact">
+                <div>
+                  <h3>广西新能源项目分布</h3>
+                  <p>点击地图点位查看项目类型、所在区域和装机信息。</p>
+                </div>
+              </div>
+              <div class="gx-map-wrap">
+                <svg id="gxMap" viewBox="0 0 760 520" role="img" aria-label="广西新能源项目地图"></svg>
+              </div>
+            </article>
+
+            <article class="panel">
+              <div class="panel-head compact">
+                <div>
+                  <h3 id="plantTitle">项目详情</h3>
+                  <p id="plantSubtitle">选择地图上的项目点位。</p>
+                </div>
+              </div>
+              <div class="plant-detail" id="plantDetail"></div>
+              <div class="insight-list" id="overviewInsights"></div>
+            </article>
+          </section>
+        </section>
+
+        <section class="spot-view hidden" id="spotView">
+          <article class="panel">
+            <div class="panel-head">
+              <div>
+                <h3>现货数据分析</h3>
+                <p>上传含有“96点数据”和“24时数据”的 xlsm/xlsx 文件，按日期展示日前、实时电价和新能源等曲线。</p>
+              </div>
+              <label class="upload-button">
+                上传文件
+                <input id="spotFileInput" type="file" accept=".xlsm,.xlsx,.xls" />
+              </label>
+            </div>
+            <div class="spot-controls">
+              <label>
+                <span>选择日期</span>
+                <select id="spotDateSelect"></select>
+              </label>
+              <button class="primary-button" id="spotRenderBtn" type="button">生成图表</button>
+            </div>
+            <div class="compare-note" id="spotStatus">请先上传现货数据文件。</div>
+          </article>
+
+          <section class="spot-metrics" id="spotMetrics"></section>
+
+          <section class="panel spot-chart-panel">
+            <div class="panel-head compact">
+              <div>
+                <h3>日前 / 实时电价曲线</h3>
+                <p>24小时双曲线，来自“24时数据”。</p>
+              </div>
+            </div>
+            <canvas id="priceCanvas" width="1100" height="360"></canvas>
+          </section>
+
+          <section class="panel spot-chart-panel">
+            <div class="panel-head compact">
+              <div>
+                <h3>新能源与其他数值曲线</h3>
+                <p>来自“96点数据”，自动由 96 点聚合为 24 点。</p>
+              </div>
+            </div>
+            <div class="series-picker" id="seriesPicker"></div>
+            <canvas id="energyCanvas" width="1100" height="430"></canvas>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <script src="./xlsx.full.min.js"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>
