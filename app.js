@@ -1,5 +1,6 @@
 const API_URL = "https://api.open-meteo.com/v1/forecast";
 const TIMEZONE = "Asia/Shanghai";
+const DASHBOARD_HOURS = 48;
 
 const CITIES = [
   ["南宁", 22.817, 108.3669],
@@ -115,6 +116,7 @@ const state = {
   data: [],
   view: "current",
   chartCity: "南宁",
+  selectedDate: isoDate(new Date()),
 };
 
 const els = {
@@ -184,6 +186,7 @@ const spotState = {
 };
 
 function init() {
+  initDashboardDateControl();
   renderCityControls();
   renderChartCityOptions();
   initCompareControls();
@@ -192,6 +195,17 @@ function init() {
   bindEvents();
   loadLocalSpotData();
   refreshData();
+}
+
+function initDashboardDateControl() {
+  const tabs = document.querySelector(".view-tabs");
+  if (!tabs) return;
+  const label = document.createElement("label");
+  label.className = "date-control dashboard-date-control";
+  label.innerHTML = `<span>选择日期</span><input id="dashboardDate" type="date" />`;
+  tabs.insertAdjacentElement("beforebegin", label);
+  els.dashboardDate = label.querySelector("#dashboardDate");
+  els.dashboardDate.value = state.selectedDate;
 }
 
 function bindEvents() {
@@ -217,6 +231,10 @@ function bindEvents() {
   els.overviewBtn.addEventListener("click", runOverview);
   els.spotFileInput.addEventListener("change", handleSpotFile);
   els.spotRenderBtn.addEventListener("click", renderSpotCharts);
+  els.dashboardDate.addEventListener("change", () => {
+    state.selectedDate = els.dashboardDate.value || isoDate(new Date());
+    refreshData();
+  });
 
   document.querySelectorAll(".tab-button").forEach((button) => {
     button.addEventListener("click", () => {
@@ -330,6 +348,8 @@ async function fetchCityWithRetry(city, latitude, longitude, retries = 3) {
 }
 
 async function fetchCity(city, latitude, longitude) {
+  const startDate = state.selectedDate || isoDate(new Date());
+  const endDate = addDays(startDate, 1);
   const params = new URLSearchParams({
     latitude,
     longitude,
@@ -337,8 +357,8 @@ async function fetchCity(city, latitude, longitude) {
     hourly: HOURLY_FIELDS.join(","),
     daily: DAILY_FIELDS.join(","),
     timezone: TIMEZONE,
-    forecast_hours: "72",
-    forecast_days: "7",
+    start_date: startDate,
+    end_date: endDate,
     wind_speed_unit: "ms",
   });
 
@@ -351,23 +371,25 @@ async function fetchCity(city, latitude, longitude) {
 }
 
 function normalizeCityData(city, payload) {
-  const hourly = toRows(city, payload.hourly, "time", HOURLY_FIELDS, 72);
+  const hourly = toRows(city, payload.hourly, "time", HOURLY_FIELDS, DASHBOARD_HOURS);
   const daily = toRows(city, payload.daily, "date", DAILY_FIELDS, 7);
+  const dayRows = rowsForDate(hourly, state.selectedDate);
+  const daySample = dayRows.find((row) => String(row.time).includes("T12:")) ?? dayRows[0] ?? {};
   const current = {
     city,
-    time: payload.current?.time,
-    weather: weatherText(payload.current?.weather_code),
-    temperature: payload.current?.temperature_2m,
-    apparentTemperature: payload.current?.apparent_temperature,
-    humidity: payload.current?.relative_humidity_2m,
+    time: daySample.time ?? payload.current?.time,
+    weather: weatherText(daySample.weather_code ?? payload.current?.weather_code),
+    temperature: daySample.temperature_2m ?? payload.current?.temperature_2m,
+    apparentTemperature: daySample.apparent_temperature ?? payload.current?.apparent_temperature,
+    humidity: daySample.relative_humidity_2m ?? payload.current?.relative_humidity_2m,
     precipitation: payload.current?.precipitation,
     rain: payload.current?.rain,
-    cloudCover: payload.current?.cloud_cover,
-    shortwaveRadiation: payload.current?.shortwave_radiation,
+    cloudCover: daySample.cloud_cover ?? payload.current?.cloud_cover,
+    shortwaveRadiation: daySample.shortwave_radiation ?? payload.current?.shortwave_radiation,
     pressure: payload.current?.pressure_msl,
-    windSpeed: payload.current?.wind_speed_10m,
-    windDirection: payload.current?.wind_direction_10m,
-    windGusts: payload.current?.wind_gusts_10m,
+    windSpeed: daySample.wind_speed_10m ?? payload.current?.wind_speed_10m,
+    windDirection: daySample.wind_direction_10m ?? payload.current?.wind_direction_10m,
+    windGusts: daySample.wind_gusts_10m ?? payload.current?.wind_gusts_10m,
   };
 
   const risk = {
@@ -377,6 +399,9 @@ function normalizeCityData(city, payload) {
     maxWindGusts: max(hourly, "wind_gusts_10m"),
     maxRadiation: max(hourly, "shortwave_radiation"),
     avgRadiation: average(hourly, "shortwave_radiation"),
+    dayRadiation: sum(dayRows, "shortwave_radiation"),
+    dayAvgRadiation: average(dayRows, "shortwave_radiation"),
+    dayMaxRadiation: max(dayRows, "shortwave_radiation"),
   };
 
   return { city, current, hourly, daily, risk };
@@ -412,7 +437,7 @@ function renderMetrics() {
 function renderTable() {
   const copy = {
     current: ["城市当前天气", "按电力市场关注度排序，突出负荷和运行风险。"],
-    hourly: ["未来 72 小时预报", "展示各城市近期温度、降水、辐射和风况变化。"],
+    hourly: ["未来 48 小时预报", "展示各城市 48 小时温度、降水、辐射和风况变化。"],
     daily: ["未来 7 天趋势", "用于中期负荷、新能源出力和天气风险判断。"],
   };
   els.tableTitle.textContent = copy[state.view][0];
@@ -429,12 +454,12 @@ function renderCurrentTable() {
     .sort((a, b) => b.avgRadiation - a.avgRadiation);
 
   renderTableFrame(
-    ["城市", "当前辐照", "72h平均辐照", "72h峰值辐照", "温度", "体感", "湿度", "云量", "风速", "阵风", "风险"],
+    ["城市", "当天辐照", "当天平均辐照", "当天峰值辐照", "温度", "体感", "湿度", "云量", "风速", "阵风", "风险"],
     rows.map((row) => [
       row.city,
-      withUnit(row.shortwaveRadiation, "W/m²"),
-      withUnit(row.avgRadiation, "W/m²"),
-      withUnit(row.maxRadiation, "W/m²"),
+      withUnit(row.dayRadiation, "W/m²"),
+      withUnit(row.dayAvgRadiation, "W/m²"),
+      withUnit(row.dayMaxRadiation, "W/m²"),
       withUnit(row.temperature, "°C"),
       withUnit(row.apparentTemperature, "°C"),
       withUnit(row.humidity, "%"),
@@ -447,7 +472,7 @@ function renderCurrentTable() {
 }
 
 function renderHourlyTable() {
-  const rows = state.data.flatMap((item) => item.hourly.slice(0, 12));
+  const rows = state.data.flatMap((item) => item.hourly.slice(0, DASHBOARD_HOURS));
   renderTableFrame(
     ["城市", "时间", "短波辐照", "直接辐照", "散射辐照", "温度", "体感", "降水概率", "云量", "风速", "阵风"],
     rows.map((row) => [
@@ -513,9 +538,9 @@ function drawTrend() {
 
   state.chartCity = item.city;
   els.chartCitySelect.value = item.city;
-  els.chartCityLabel.textContent = `${item.city} 未来 72 小时量化气象趋势`;
+  els.chartCityLabel.textContent = `${item.city} 未来 48 小时量化气象趋势`;
 
-  const rows = item.hourly;
+  const rows = item.hourly.slice(0, DASHBOARD_HOURS);
   const padding = { left: 46, right: 160, top: 28, bottom: 42 };
   const plotW = width - padding.left - padding.right;
   const plotH = height - padding.top - padding.bottom;
@@ -641,7 +666,7 @@ function drawRightLegend(ctx, seriesResults, width, height, padding) {
 function drawTimeAxis(ctx, rows, width, height, padding, plotW) {
   ctx.fillStyle = "#6d7971";
   ctx.font = "12px Microsoft YaHei, sans-serif";
-  const ticks = [0, 12, 24, 36, 48, 60, 71].filter((index) => rows[index]);
+  const ticks = [0, 8, 16, 24, 32, 40, 47].filter((index) => rows[index]);
   ticks.forEach((index) => {
     const x = padding.left + (index / Math.max(rows.length - 1, 1)) * plotW;
     ctx.fillText(shortTime(rows[index].time), Math.min(x, width - padding.right - 74), height - 16);
@@ -650,10 +675,10 @@ function drawTimeAxis(ctx, rows, width, height, padding, plotW) {
 
 function renderChartStats(item) {
   const stats = [
-    ["最高温度", withUnit(max(item.hourly, "temperature_2m"), "°C"), "load"],
-    ["平均辐照", withUnit(average(item.hourly, "shortwave_radiation"), "W/m²"), "solar"],
-    ["峰值辐照", withUnit(max(item.hourly, "shortwave_radiation"), "W/m²"), "solar"],
-    ["最大阵风", withUnit(max(item.hourly, "wind_gusts_10m"), "m/s"), "wind"],
+    ["最高温度", withUnit(max(item.hourly.slice(0, DASHBOARD_HOURS), "temperature_2m"), "°C"), "load"],
+    ["平均辐照", withUnit(average(item.hourly.slice(0, DASHBOARD_HOURS), "shortwave_radiation"), "W/m²"), "solar"],
+    ["峰值辐照", withUnit(max(item.hourly.slice(0, DASHBOARD_HOURS), "shortwave_radiation"), "W/m²"), "solar"],
+    ["最大阵风", withUnit(max(item.hourly.slice(0, DASHBOARD_HOURS), "wind_gusts_10m"), "m/s"), "wind"],
   ];
   els.chartStats.innerHTML = stats
     .map(([label, value, type]) => `
@@ -686,8 +711,8 @@ function renderInsights() {
   const solar = maxItem(data, (item) => item.risk.avgRadiation);
 
   const insights = [
-    ["load", `${hottest.city} 未来 72 小时最高体感温度 ${fmt(hottest.risk.maxApparentTemperature)}°C，空调负荷压力相对更强。`],
-    ["solar", `${solar.city} 未来 72 小时平均短波辐照 ${fmt(solar.risk.avgRadiation)} W/m²，峰值 ${fmt(solar.risk.maxRadiation)} W/m²。`],
+    ["load", `${hottest.city} 未来 48 小时最高体感温度 ${fmt(hottest.risk.maxApparentTemperature)}°C，空调负荷压力相对更强。`],
+    ["solar", `${solar.city} 未来 48 小时平均短波辐照 ${fmt(solar.risk.avgRadiation)} W/m²，峰值 ${fmt(solar.risk.maxRadiation)} W/m²。`],
     ["wind", `${gustiest.city} 最大阵风 ${fmt(gustiest.risk.maxWindGusts)} m/s，关注风电波动和线路运行风险。`],
     ["risk", `${wettest.city} 最大降水概率 ${fmt(wettest.risk.maxRainProbability)}%，需关注雷暴、强降雨造成的短时扰动。`],
   ];
@@ -1277,6 +1302,20 @@ function secondsToHours(value) {
 function shortTime(value) {
   if (!value) return "--";
   return value.replace("T", " ").slice(5, 16);
+}
+
+function isoDate(date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function addDays(dateText, days) {
+  const date = new Date(`${dateText}T00:00:00`);
+  date.setDate(date.getDate() + days);
+  return isoDate(date);
+}
+
+function rowsForDate(rows, dateText) {
+  return rows.filter((row) => String(row.time ?? "").startsWith(dateText));
 }
 
 function formatDateTime(date) {

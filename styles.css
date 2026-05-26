@@ -335,6 +335,30 @@ button {
   border-bottom: 1px solid var(--line);
 }
 
+.dashboard-date-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-soft);
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.dashboard-date-control input {
+  min-height: 30px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0 8px;
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+}
+
 .panel-head.compact {
   align-items: flex-start;
 }
