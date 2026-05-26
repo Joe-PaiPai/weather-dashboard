@@ -890,8 +890,8 @@ select {
   gap: 16px;
 }
 
-.spot-hero-panel,
-.spot-view .spot-chart-panel {
+.spot-dashboard-shell,
+.spot-secondary-chart {
   border-color: rgba(45, 159, 220, 0.45);
   background:
     linear-gradient(180deg, rgba(8, 34, 66, 0.98), rgba(3, 20, 42, 0.98));
@@ -899,20 +899,30 @@ select {
   color: #e9f6ff;
 }
 
-.spot-hero-panel .panel-head,
-.spot-view .spot-chart-panel .panel-head {
-  border-bottom-color: rgba(87, 184, 255, 0.24);
+.spot-dashboard-shell {
+  border: 1px solid rgba(45, 159, 220, 0.45);
+  border-radius: 14px;
+  padding: 20px;
+}
+
+.spot-hero-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 18px;
 }
 
 .spot-hero-head h3,
-.spot-view .spot-chart-panel h3 {
+.spot-secondary-chart h3 {
   color: #fff;
-  font-size: 24px;
+  font-size: 30px;
   text-shadow: 0 0 18px rgba(83, 207, 255, 0.28);
 }
 
 .spot-hero-head p,
-.spot-view .spot-chart-panel p {
+.spot-section-head p,
+.spot-secondary-chart p {
   color: #9bb6ca;
 }
 
@@ -927,9 +937,11 @@ select {
   display: flex;
   gap: 12px;
   align-items: end;
-  padding: 18px;
+  padding: 16px;
   flex-wrap: wrap;
-  border-top: 1px solid rgba(87, 184, 255, 0.16);
+  border: 1px solid rgba(87, 184, 255, 0.24);
+  border-radius: 12px;
+  background: rgba(4, 23, 48, 0.64);
 }
 
 .spot-controls label {
@@ -960,10 +972,31 @@ select {
 }
 
 .spot-view .compare-note {
-  margin: 0 18px 18px;
+  margin: 12px 0 0;
   border-color: rgba(87, 184, 255, 0.18);
   background: rgba(4, 22, 45, 0.58);
   color: #9bb6ca;
+}
+
+.spot-section {
+  margin-top: 18px;
+  border: 1px solid rgba(87, 184, 255, 0.24);
+  border-radius: 12px;
+  background: rgba(3, 18, 39, 0.62);
+  padding: 16px;
+}
+
+.spot-section h4,
+.spot-section-head h4 {
+  margin: 0 0 14px;
+  color: #f4fbff;
+  font-size: 17px;
+}
+
+.spot-section-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
 }
 
 .spot-metrics {
@@ -1032,13 +1065,16 @@ select {
 .spot-chart-panel canvas {
   display: block;
   width: 100%;
-  height: 390px;
+  height: 410px;
   padding: 12px 18px 18px;
-  border-top: 1px solid rgba(87, 184, 255, 0.18);
 }
 
 #energyCanvas {
-  height: 430px;
+  height: 360px;
+}
+
+.spot-secondary-chart {
+  display: none;
 }
 
 .series-picker {

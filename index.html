@@ -238,8 +238,8 @@
         </section>
 
         <section class="spot-view hidden" id="spotView">
-          <article class="panel spot-hero-panel">
-            <div class="panel-head spot-hero-head">
+          <article class="spot-dashboard-shell">
+            <div class="spot-hero-head">
               <div>
                 <p class="spot-kicker">POWER MARKET ANALYTICS</p>
                 <h3>套利价差专题</h3>
@@ -270,21 +270,24 @@
               <button class="primary-button" id="spotRenderBtn" type="button">生成图表</button>
             </div>
             <div class="compare-note" id="spotStatus">请先上传现货数据文件。</div>
+
+            <section class="spot-section">
+              <h4>核心指标</h4>
+              <section class="spot-metrics" id="spotMetrics"></section>
+            </section>
+
+            <section class="spot-section spot-chart-panel">
+              <div class="spot-section-head">
+                <div>
+                  <h4>价格与价差走势</h4>
+                  <p>日前价格、实时价格、正价差和负价差。</p>
+                </div>
+              </div>
+              <canvas id="priceCanvas" width="1100" height="420"></canvas>
+            </section>
           </article>
 
-          <section class="spot-metrics" id="spotMetrics"></section>
-
-          <section class="panel spot-chart-panel">
-            <div class="panel-head compact">
-              <div>
-                <h3>日前 / 实时电价曲线</h3>
-                <p>24小时双曲线，来自“24时数据”。</p>
-              </div>
-            </div>
-            <canvas id="priceCanvas" width="1100" height="360"></canvas>
-          </section>
-
-          <section class="panel spot-chart-panel">
+          <section class="panel spot-chart-panel spot-secondary-chart">
             <div class="panel-head compact">
               <div>
                 <h3>新能源与其他数值曲线</h3>
