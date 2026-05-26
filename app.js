@@ -154,7 +154,8 @@ const els = {
   plantDetail: document.querySelector("#plantDetail"),
   overviewInsights: document.querySelector("#overviewInsights"),
   spotFileInput: document.querySelector("#spotFileInput"),
-  spotDateSelect: document.querySelector("#spotDateSelect"),
+  spotStartDateSelect: document.querySelector("#spotStartDateSelect"),
+  spotEndDateSelect: document.querySelector("#spotEndDateSelect"),
   spotRenderBtn: document.querySelector("#spotRenderBtn"),
   spotStatus: document.querySelector("#spotStatus"),
   spotMetrics: document.querySelector("#spotMetrics"),
@@ -838,7 +839,13 @@ function applySpotPayload(payload) {
 
 function buildSpotModel() {
   spotState.dates = [...new Set(spotState.priceRows.map((row) => normalizeExcelDate(row["日期"])).filter(Boolean))].sort();
-  els.spotDateSelect.innerHTML = spotState.dates.map((date) => `<option value="${date}">${date}</option>`).join("");
+  const dateOptions = spotState.dates.map((date) => `<option value="${date}">${date}</option>`).join("");
+  els.spotStartDateSelect.innerHTML = dateOptions;
+  els.spotEndDateSelect.innerHTML = dateOptions;
+  if (spotState.dates.length) {
+    els.spotStartDateSelect.value = spotState.dates[0];
+    els.spotEndDateSelect.value = spotState.dates.at(-1);
+  }
 
   const numericFields96 = Object.keys(spotState.pointRows[0] ?? {})
     .filter((field) => !["年", "月", "日", "累计", "小时", "序号", "日期", "周", "时间（15分钟）"].includes(field))
@@ -874,15 +881,15 @@ function buildSpotModel() {
 }
 
 function renderSpotCharts() {
-  const date = els.spotDateSelect.value;
-  if (!date) {
-    els.spotStatus.textContent = "请先上传文件并选择日期。";
+  const range = getSpotDateRange();
+  if (!range) {
+    els.spotStatus.textContent = "请先上传文件并选择完整日期区间。";
     return;
   }
   const priceRows = spotState.priceRows
-    .filter((row) => normalizeExcelDate(row["日期"]) === date)
-    .sort((a, b) => Number(a["小时"]) - Number(b["小时"]));
-  const hourlyRows = spotState.hourly96.get(date) ?? [];
+    .filter((row) => isDateInRange(normalizeExcelDate(row["日期"]), range.start, range.end))
+    .sort(sortSpotRowByTime);
+  const hourlyRows = buildSpotHourlyRange(range.start, range.end);
 
   const pricedRows = priceRows.map((row) => {
     const dayAhead = Number(row["日前电价"]);
@@ -890,18 +897,20 @@ function renderSpotCharts() {
     const spread = Number.isFinite(dayAhead) && Number.isFinite(realtime) ? realtime - dayAhead : null;
     return {
       ...row,
+      spotTimeLabel: `${normalizeExcelDate(row["日期"]).slice(5)} ${String(row["小时"]).padStart(2, "0")}:00`,
       "正价差": spread > 0 ? spread : null,
       "负价差": spread < 0 ? spread : null,
     };
   });
 
-  renderSpotMetrics(date, pricedRows, hourlyRows);
+  const rangeLabel = range.start === range.end ? range.start : `${range.start} 至 ${range.end}`;
+  renderSpotMetrics(rangeLabel, pricedRows, hourlyRows);
   drawMultiLineChart(els.priceCanvas, pricedRows, [
     { field: "日前电价", label: "日前电价", color: "#d99a22", unit: "元/MWh" },
     { field: "实时电价", label: "实时电价", color: "#5fd3ff", unit: "元/MWh" },
     { field: "正价差", label: "正价差", color: "#f1a35a", unit: "元/MWh", type: "bar" },
     { field: "负价差", label: "负价差", color: "#42d99c", unit: "元/MWh", type: "bar" },
-  ], "小时");
+  ], "spotTimeLabel");
 
   const colors = ["#287f83", "#d99a22", "#d65843", "#6848a6", "#3f7fbf", "#7c8a30", "#b35c9e", "#4f6b57"];
   const series = [...spotState.selectedSeries].map((field, index) => ({
@@ -910,7 +919,7 @@ function renderSpotCharts() {
     color: colors[index % colors.length],
     unit: "MW",
   }));
-  drawMultiLineChart(els.energyCanvas, hourlyRows, series, "hour");
+  drawMultiLineChart(els.energyCanvas, hourlyRows, series, "spotTimeLabel");
 }
 
 function renderSpotMetrics(date, priceRows, hourlyRows) {
@@ -939,6 +948,33 @@ function renderSpotMetrics(date, priceRows, hourlyRows) {
       </div>
     </article>
   `).join("");
+}
+
+function getSpotDateRange() {
+  const start = els.spotStartDateSelect.value;
+  const end = els.spotEndDateSelect.value;
+  if (!start || !end) return null;
+  return start <= end ? { start, end } : { start: end, end: start };
+}
+
+function isDateInRange(date, start, end) {
+  return date && date >= start && date <= end;
+}
+
+function sortSpotRowByTime(a, b) {
+  const aKey = `${normalizeExcelDate(a["日期"])} ${String(a["小时"]).padStart(2, "0")}`;
+  const bKey = `${normalizeExcelDate(b["日期"])} ${String(b["小时"]).padStart(2, "0")}`;
+  return aKey.localeCompare(bKey);
+}
+
+function buildSpotHourlyRange(start, end) {
+  return spotState.dates
+    .filter((date) => isDateInRange(date, start, end))
+    .flatMap((date) => (spotState.hourly96.get(date) ?? []).map((row) => ({
+      ...row,
+      date,
+      spotTimeLabel: `${date.slice(5)} ${String(row.hour).padStart(2, "0")}:00`,
+    })));
 }
 
 function drawMultiLineChart(canvas, rows, series, xField) {
@@ -998,11 +1034,19 @@ function drawMultiLineChart(canvas, rows, series, xField) {
   else drawRightLegend(ctx, legends, w, h, pad);
   ctx.fillStyle = isSpot ? "#9db4c9" : "#6d7971";
   ctx.font = "12px Microsoft YaHei, sans-serif";
-  [0, 3, 6, 9, 12, 15, 18, 21, 23].forEach((i) => {
+  const tickIndexes = buildTickIndexes(rows.length);
+  tickIndexes.forEach((i) => {
     if (!rows[i]) return;
     const x = pad.left + (i / Math.max(rows.length - 1, 1)) * plotW;
-    ctx.fillText(`${String(rows[i][xField] ?? i).padStart(2, "0")}:00`, Math.min(x, w - pad.right - 45), h - 16);
+    const label = rows[i][xField] ?? `${String(i).padStart(2, "0")}:00`;
+    ctx.fillText(String(label), Math.min(x, w - pad.right - 76), h - 16);
   });
+}
+
+function buildTickIndexes(length) {
+  if (length <= 24) return [0, 3, 6, 9, 12, 15, 18, 21, 23].filter((index) => index < length);
+  const count = 8;
+  return Array.from({ length: count }, (_, index) => Math.round((index / (count - 1)) * (length - 1)));
 }
 
 function drawSpotGrid(ctx, width, height, padding) {
