@@ -885,12 +885,51 @@ select {
   display: none;
 }
 
+.spot-view {
+  display: grid;
+  gap: 16px;
+}
+
+.spot-hero-panel,
+.spot-view .spot-chart-panel {
+  border-color: rgba(45, 159, 220, 0.45);
+  background:
+    linear-gradient(180deg, rgba(8, 34, 66, 0.98), rgba(3, 20, 42, 0.98));
+  box-shadow: 0 18px 42px rgba(3, 18, 36, 0.22);
+  color: #e9f6ff;
+}
+
+.spot-hero-panel .panel-head,
+.spot-view .spot-chart-panel .panel-head {
+  border-bottom-color: rgba(87, 184, 255, 0.24);
+}
+
+.spot-hero-head h3,
+.spot-view .spot-chart-panel h3 {
+  color: #fff;
+  font-size: 24px;
+  text-shadow: 0 0 18px rgba(83, 207, 255, 0.28);
+}
+
+.spot-hero-head p,
+.spot-view .spot-chart-panel p {
+  color: #9bb6ca;
+}
+
+.spot-kicker {
+  color: #43dcff !important;
+  font-size: 12px !important;
+  font-weight: 900;
+  letter-spacing: 0;
+}
+
 .spot-controls {
   display: flex;
   gap: 12px;
   align-items: end;
   padding: 18px;
   flex-wrap: wrap;
+  border-top: 1px solid rgba(87, 184, 255, 0.16);
 }
 
 .spot-controls label {
@@ -902,38 +941,100 @@ select {
   font-weight: 700;
 }
 
+.spot-view .spot-controls label {
+  color: #92adbf;
+}
+
+.spot-view .spot-controls select {
+  min-height: 42px;
+  border-color: rgba(72, 174, 234, 0.42);
+  background: rgba(1, 16, 35, 0.82);
+  color: #e9f6ff;
+}
+
+.spot-view .upload-button,
+.spot-view .primary-button {
+  border-color: rgba(75, 201, 255, 0.44);
+  background: linear-gradient(180deg, rgba(32, 126, 184, 0.92), rgba(14, 74, 123, 0.92));
+  color: #fff;
+}
+
+.spot-view .compare-note {
+  margin: 0 18px 18px;
+  border-color: rgba(87, 184, 255, 0.18);
+  background: rgba(4, 22, 45, 0.58);
+  color: #9bb6ca;
+}
+
 .spot-metrics {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
 }
 
 .spot-card {
-  border: 1px solid var(--line);
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr);
+  gap: 14px;
+  align-items: center;
+  min-height: 118px;
+  border: 1px solid rgba(58, 165, 231, 0.32);
   border-radius: 8px;
-  background: var(--surface);
-  box-shadow: var(--shadow);
-  padding: 16px;
+  background:
+    radial-gradient(circle at 92% 0%, rgba(32, 156, 220, 0.22), transparent 38%),
+    rgba(5, 28, 56, 0.94);
+  box-shadow: inset 0 0 22px rgba(45, 167, 237, 0.08), 0 12px 28px rgba(2, 17, 32, 0.14);
+  padding: 16px 18px;
+  color: #eaf7ff;
+}
+
+.spot-card-icon {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: rgba(23, 172, 218, 0.18);
+  color: #52d9ff;
+  font-size: 23px;
+  font-weight: 900;
+  box-shadow: inset 0 0 18px rgba(59, 215, 255, 0.18);
 }
 
 .spot-card span {
   display: block;
-  color: var(--muted);
-  font-size: 13px;
+  color: #9db8c9;
+  font-size: 14px;
 }
 
 .spot-card strong {
   display: block;
+  margin-top: 5px;
+  font-size: 29px;
+  line-height: 1.1;
+}
+
+.spot-card strong small {
+  margin-left: 5px;
+  color: #a8bed0;
+  font-size: 13px;
+}
+
+.spot-card em {
+  display: block;
   margin-top: 8px;
-  font-size: 27px;
+  color: #48e1a9;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 800;
 }
 
 .spot-chart-panel canvas {
   display: block;
   width: 100%;
-  height: 360px;
+  height: 390px;
   padding: 12px 18px 18px;
-  border-top: 1px solid var(--line);
+  border-top: 1px solid rgba(87, 184, 255, 0.18);
 }
 
 #energyCanvas {
@@ -945,7 +1046,7 @@ select {
   flex-wrap: wrap;
   gap: 8px;
   padding: 14px 18px;
-  border-top: 1px solid var(--line);
+  border-top: 1px solid rgba(87, 184, 255, 0.18);
 }
 
 .series-pill {
@@ -953,9 +1054,10 @@ select {
   align-items: center;
   gap: 7px;
   min-height: 30px;
-  border: 1px solid var(--line);
+  border: 1px solid rgba(73, 171, 231, 0.3);
   border-radius: 999px;
-  background: #fff;
+  background: rgba(5, 28, 56, 0.82);
+  color: #d8efff;
   padding: 0 11px;
   font-size: 12px;
 }
@@ -990,7 +1092,8 @@ select {
   .compare-form,
   .compare-grid,
   .period-grid,
-  .map-layout {
+  .map-layout,
+  .spot-metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -1028,7 +1131,8 @@ select {
   .compare-form,
   .compare-grid,
   .period-grid,
-  .map-layout {
+  .map-layout,
+  .spot-metrics {
     grid-template-columns: 1fr;
   }
 

@@ -238,11 +238,12 @@
         </section>
 
         <section class="spot-view hidden" id="spotView">
-          <article class="panel">
-            <div class="panel-head">
+          <article class="panel spot-hero-panel">
+            <div class="panel-head spot-hero-head">
               <div>
-                <h3>现货数据分析</h3>
-                <p>上传含有“96点数据”和“24时数据”的 xlsm/xlsx 文件，按日期展示日前、实时电价和新能源等曲线。</p>
+                <p class="spot-kicker">POWER MARKET ANALYTICS</p>
+                <h3>套利价差专题</h3>
+                <p>分析日前价格、实时价格、价差分布与新能源曲线。</p>
               </div>
               <label class="upload-button">
                 上传文件
@@ -253,6 +254,18 @@
               <label>
                 <span>选择日期</span>
                 <select id="spotDateSelect"></select>
+              </label>
+              <label>
+                <span>区域</span>
+                <select>
+                  <option>广西</option>
+                </select>
+              </label>
+              <label>
+                <span>时刻范围</span>
+                <select>
+                  <option>00:00 至 24:00</option>
+                </select>
               </label>
               <button class="primary-button" id="spotRenderBtn" type="button">生成图表</button>
             </div>

@@ -881,10 +881,23 @@ function renderSpotCharts() {
     .sort((a, b) => Number(a["小时"]) - Number(b["小时"]));
   const hourlyRows = spotState.hourly96.get(date) ?? [];
 
-  renderSpotMetrics(date, priceRows, hourlyRows);
-  drawMultiLineChart(els.priceCanvas, priceRows, [
+  const pricedRows = priceRows.map((row) => {
+    const dayAhead = Number(row["日前电价"]);
+    const realtime = Number(row["实时电价"]);
+    const spread = Number.isFinite(dayAhead) && Number.isFinite(realtime) ? realtime - dayAhead : null;
+    return {
+      ...row,
+      "正价差": spread > 0 ? spread : null,
+      "负价差": spread < 0 ? spread : null,
+    };
+  });
+
+  renderSpotMetrics(date, pricedRows, hourlyRows);
+  drawMultiLineChart(els.priceCanvas, pricedRows, [
     { field: "日前电价", label: "日前电价", color: "#d99a22", unit: "元/MWh" },
-    { field: "实时电价", label: "实时电价", color: "#287f83", unit: "元/MWh" },
+    { field: "实时电价", label: "实时电价", color: "#5fd3ff", unit: "元/MWh" },
+    { field: "正价差", label: "正价差", color: "#f1a35a", unit: "元/MWh", type: "bar" },
+    { field: "负价差", label: "负价差", color: "#42d99c", unit: "元/MWh", type: "bar" },
   ], "小时");
 
   const colors = ["#287f83", "#d99a22", "#d65843", "#6848a6", "#3f7fbf", "#7c8a30", "#b35c9e", "#4f6b57"];
@@ -901,18 +914,26 @@ function renderSpotMetrics(date, priceRows, hourlyRows) {
   const dayAhead = average(priceRows, "日前电价");
   const realtime = average(priceRows, "实时电价");
   const spread = realtime - dayAhead;
+  const maxPositive = max(priceRows, "正价差");
+  const maxNegative = min(priceRows, "负价差");
+  const positiveHours = priceRows.filter((row) => Number(row["正价差"]) > 0).length;
   const newEnergyField = [...spotState.selectedSeries].find((field) => field.includes("新能源"));
   const newEnergyAvg = newEnergyField ? average(hourlyRows, newEnergyField) : null;
   els.spotMetrics.innerHTML = [
-    ["日期", date, ""],
-    ["日前均价", fmt(dayAhead), "元/MWh"],
-    ["实时均价", fmt(realtime), "元/MWh"],
-    ["实时-日前价差", `${spread > 0 ? "+" : ""}${fmt(spread)}`, "元/MWh"],
-    ["新能源均值", fmt(newEnergyAvg), "MW"],
-  ].map(([label, value, unit]) => `
+    ["区间日前均价", fmt(dayAhead), "元/MWh", "¥", "由筛选日期计算"],
+    ["区间实时均价", fmt(realtime), "元/MWh", "∿", "剔除实时缺失样本"],
+    ["区间价差均值", `${spread > 0 ? "+" : ""}${fmt(spread)}`, "元/MWh", "↔", spread >= 0 ? "整体为正价差" : "整体呈负价差"],
+    ["最大正价差", fmt(maxPositive), "元/MWh", "↗", date],
+    ["最大负价差", fmt(maxNegative), "元/MWh", "↘", date],
+    ["正价差时段数", positiveHours, "小时", "◴", `新能源均值 ${fmt(newEnergyAvg)}MW`],
+  ].map(([label, value, unit, icon, note]) => `
     <article class="spot-card">
-      <span>${label}</span>
-      <strong>${value}${unit}</strong>
+      <div class="spot-card-icon">${icon}</div>
+      <div>
+        <span>${label}</span>
+        <strong>${value}<small>${unit}</small></strong>
+        <em>${note}</em>
+      </div>
     </article>
   `).join("");
 }
@@ -926,6 +947,7 @@ function drawMultiLineChart(canvas, rows, series, xField) {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   const w = rect.width;
   const h = rect.height;
+  const isSpot = canvas.closest(".spot-view");
   ctx.clearRect(0, 0, w, h);
   if (!rows.length || !series.length) {
     drawEmptyChart(ctx, w, h, "暂无数据");
@@ -934,35 +956,108 @@ function drawMultiLineChart(canvas, rows, series, xField) {
   const pad = { left: 50, right: 170, top: 26, bottom: 42 };
   const plotW = w - pad.left - pad.right;
   const plotH = h - pad.top - pad.bottom;
-  drawGrid(ctx, w, h, pad);
+  if (isSpot) drawSpotGrid(ctx, w, h, pad);
+  else drawGrid(ctx, w, h, pad);
 
-  const allValues = series.flatMap((s) => rows.map((r) => Number(r[s.field])).filter(Number.isFinite));
+  const lineSeries = series.filter((s) => s.type !== "bar");
+  const barSeries = series.filter((s) => s.type === "bar");
+  const allValues = lineSeries.flatMap((s) => rows.map((r) => Number(r[s.field])).filter(Number.isFinite));
   const minVal = Math.min(...allValues);
   const maxVal = Math.max(...allValues);
   const range = maxVal - minVal || 1;
   const legends = [];
-  series.forEach((s) => {
+  if (barSeries.length) {
+    drawSpreadBars(ctx, rows, barSeries, pad, plotW, plotH);
+  }
+  lineSeries.forEach((s) => {
     ctx.strokeStyle = s.color;
     ctx.lineWidth = 2.4;
+    ctx.shadowColor = isSpot ? s.color : "transparent";
+    ctx.shadowBlur = isSpot ? 10 : 0;
     ctx.beginPath();
+    let started = false;
     rows.forEach((row, idx) => {
       const value = Number(row[s.field]);
       if (!Number.isFinite(value)) return;
       const x = pad.left + (idx / Math.max(rows.length - 1, 1)) * plotW;
       const y = pad.top + plotH - ((value - minVal) / range) * plotH;
-      if (idx === 0) ctx.moveTo(x, y);
+      if (!started) {
+        ctx.moveTo(x, y);
+        started = true;
+      }
       else ctx.lineTo(x, y);
     });
     ctx.stroke();
+    ctx.shadowBlur = 0;
     legends.push({ ...s, latest: Number(rows.at(-1)?.[s.field]), min: min(rows, s.field), max: max(rows, s.field) });
   });
-  drawRightLegend(ctx, legends, w, h, pad);
-  ctx.fillStyle = "#6d7971";
+  if (isSpot) drawSpotLegend(ctx, [...lineSeries, ...barSeries], w, pad);
+  else drawRightLegend(ctx, legends, w, h, pad);
+  ctx.fillStyle = isSpot ? "#9db4c9" : "#6d7971";
   ctx.font = "12px Microsoft YaHei, sans-serif";
   [0, 3, 6, 9, 12, 15, 18, 21, 23].forEach((i) => {
     if (!rows[i]) return;
     const x = pad.left + (i / Math.max(rows.length - 1, 1)) * plotW;
     ctx.fillText(`${String(rows[i][xField] ?? i).padStart(2, "0")}:00`, Math.min(x, w - pad.right - 45), h - 16);
+  });
+}
+
+function drawSpotGrid(ctx, width, height, padding) {
+  const plotH = height - padding.top - padding.bottom;
+  ctx.fillStyle = "rgba(4, 20, 40, 0.72)";
+  ctx.fillRect(0, 0, width, height);
+  ctx.strokeStyle = "rgba(106, 190, 255, 0.16)";
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 5; i += 1) {
+    const y = padding.top + i * (plotH / 5);
+    ctx.beginPath();
+    ctx.moveTo(padding.left, y);
+    ctx.lineTo(width - padding.right, y);
+    ctx.stroke();
+  }
+  ctx.fillStyle = "#9db4c9";
+  ctx.font = "12px Microsoft YaHei, sans-serif";
+  ctx.fillText("价格 / 价差", 14, padding.top + 4);
+}
+
+function drawSpreadBars(ctx, rows, barSeries, padding, plotW, plotH) {
+  const values = barSeries.flatMap((s) => rows.map((row) => Number(row[s.field])).filter(Number.isFinite));
+  if (!values.length) return;
+  const maxAbs = Math.max(...values.map((value) => Math.abs(value))) || 1;
+  const zeroY = padding.top + plotH * 0.54;
+  const barWidth = Math.max(4, plotW / Math.max(rows.length, 1) * 0.36);
+  barSeries.forEach((series) => {
+    rows.forEach((row, index) => {
+      const value = Number(row[series.field]);
+      if (!Number.isFinite(value)) return;
+      const x = padding.left + (index / Math.max(rows.length - 1, 1)) * plotW - barWidth / 2;
+      const barH = Math.abs(value) / maxAbs * (plotH * 0.34);
+      const y = value >= 0 ? zeroY - barH : zeroY;
+      const gradient = ctx.createLinearGradient(0, y, 0, y + barH);
+      gradient.addColorStop(0, series.color);
+      gradient.addColorStop(1, "rgba(255,255,255,0.08)");
+      ctx.fillStyle = gradient;
+      ctx.fillRect(x, y, barWidth, Math.max(1, barH));
+    });
+  });
+  ctx.strokeStyle = "rgba(255,255,255,0.24)";
+  ctx.beginPath();
+  ctx.moveTo(padding.left, zeroY);
+  ctx.lineTo(padding.left + plotW, zeroY);
+  ctx.stroke();
+}
+
+function drawSpotLegend(ctx, series, width, padding) {
+  let x = padding.left + 260;
+  const y = 20;
+  ctx.font = "12px Microsoft YaHei, sans-serif";
+  series.forEach((item) => {
+    ctx.fillStyle = item.color;
+    ctx.fillRect(x, y - 7, 20, 4);
+    ctx.fillStyle = "#c9d9e8";
+    ctx.fillText(`${item.label}（${item.unit}）`, x + 28, y);
+    x += 150;
+    if (x > width - padding.right - 160) x = padding.left + 260;
   });
 }
 
