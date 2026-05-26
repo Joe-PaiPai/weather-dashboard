@@ -291,7 +291,10 @@ function renderChartCityOptions() {
 }
 
 function initCompareControls() {
-  els.compareCitySelect.innerHTML = CITIES.map(([name]) => `<option value="${name}">${name}</option>`).join("");
+  els.compareCitySelect.innerHTML = [
+    `<option value="__overview__">总览（全部城市）</option>`,
+    ...CITIES.map(([name]) => `<option value="${name}">${name}</option>`),
+  ].join("");
   const today = new Date();
   const day = 24 * 60 * 60 * 1000;
   const iso = (date) => date.toISOString().slice(0, 10);
@@ -1071,9 +1074,6 @@ function normalizeExcelDate(value) {
 }
 
 async function runDateCompare() {
-  const city = CITIES.find(([name]) => name === els.compareCitySelect.value);
-  if (!city) return;
-
   const periodA = normalizePeriod(els.periodAStart.value, els.periodAEnd.value);
   const periodB = normalizePeriod(els.periodBStart.value, els.periodBEnd.value);
   if (!periodA || !periodB) {
@@ -1083,23 +1083,50 @@ async function runDateCompare() {
 
   els.compareBtn.disabled = true;
   els.compareBtn.textContent = "对比中...";
-  els.compareStatus.textContent = `正在读取 ${city[0]} 的日期区间数据...`;
 
   try {
-    const [rowsA, rowsB] = await Promise.all([
-      fetchDailyRange(city[0], city[1], city[2], periodA.start, periodA.end),
-      fetchDailyRange(city[0], city[1], city[2], periodB.start, periodB.end),
-    ]);
+    const isOverview = els.compareCitySelect.value === "__overview__";
+    const rowsA = isOverview
+      ? await fetchCompareOverview(periodA, "A")
+      : await fetchCompareCity(periodA);
+    const rowsB = isOverview
+      ? await fetchCompareOverview(periodB, "B")
+      : await fetchCompareCity(periodB);
     const summaryA = summarizePeriod(rowsA);
     const summaryB = summarizePeriod(rowsB);
-    renderCompareResult(city[0], periodA, periodB, summaryA, summaryB);
-    els.compareStatus.textContent = `已完成 ${city[0]} 日期对比。`;
+    const label = isOverview ? "广西总览" : els.compareCitySelect.value;
+    renderCompareResult(label, periodA, periodB, summaryA, summaryB);
+    els.compareStatus.textContent = `已完成 ${label} 日期对比。`;
   } catch (error) {
     els.compareStatus.textContent = `日期对比失败：${error.message}`;
   } finally {
     els.compareBtn.disabled = false;
     els.compareBtn.textContent = "开始对比";
   }
+}
+
+async function fetchCompareCity(period) {
+  const city = CITIES.find(([name]) => name === els.compareCitySelect.value);
+  if (!city) throw new Error("请选择城市。");
+  els.compareStatus.textContent = `正在读取 ${city[0]} 的日期区间数据...`;
+  return fetchDailyRange(city[0], city[1], city[2], period.start, period.end);
+}
+
+async function fetchCompareOverview(period, label) {
+  let completed = 0;
+  const settled = await mapWithConcurrency(CITIES, 4, async ([name, lat, lon]) => {
+    try {
+      return await fetchDailyRange(name, lat, lon, period.start, period.end);
+    } finally {
+      completed += 1;
+      els.compareStatus.textContent = `正在读取 ${label} 区间全部城市... ${completed}/${CITIES.length}`;
+    }
+  });
+  const rows = settled.filter((item) => item.status === "fulfilled").flatMap((item) => item.value);
+  const failed = settled.length - settled.filter((item) => item.status === "fulfilled").length;
+  if (!rows.length) throw new Error(`${label} 区间全部城市读取失败。`);
+  if (failed) els.compareStatus.textContent = `${label} 区间有 ${failed} 个城市暂时失败，已用成功城市生成总览。`;
+  return rows;
 }
 
 async function runOverview() {
