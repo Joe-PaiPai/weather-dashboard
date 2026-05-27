@@ -121,6 +121,7 @@ const state = {
 };
 
 const els = {
+  appShell: document.querySelector(".app-shell"),
   cityList: document.querySelector("#cityList"),
   selectAllBtn: document.querySelector("#selectAllBtn"),
   clearBtn: document.querySelector("#clearBtn"),
@@ -255,6 +256,7 @@ function bindEvents() {
 }
 
 function setMode(mode) {
+  els.appShell.classList.toggle("spot-mode", mode === "spot");
   els.dashboardView.classList.toggle("hidden", mode !== "dashboard");
   els.compareView.classList.toggle("hidden", mode !== "compare");
   els.overviewView.classList.toggle("hidden", mode !== "overview");
