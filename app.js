@@ -117,6 +117,7 @@ const state = {
   view: "current",
   chartCity: "南宁",
   selectedDate: isoDate(new Date()),
+  trendVisibleSeries: new Set(["temperature_2m", "shortwave_radiation", "wind_gusts_10m"]),
 };
 
 const els = {
@@ -174,6 +175,7 @@ const els = {
   chartCitySelect: document.querySelector("#chartCitySelect"),
   chartCityLabel: document.querySelector("#chartCityLabel"),
   chartStats: document.querySelector("#chartStats"),
+  trendLegend: document.querySelector("#trendLegend"),
   trendCanvas: document.querySelector("#trendCanvas"),
   insightList: document.querySelector("#insightList"),
 };
@@ -578,6 +580,7 @@ function drawTrend() {
   const item = state.data.find((entry) => entry.city === state.chartCity) ?? state.data[0];
   if (!item) {
     els.chartStats.innerHTML = "";
+    els.trendLegend.innerHTML = "";
     drawEmptyChart(ctx, width, height, "暂无趋势数据");
     return;
   }
@@ -587,7 +590,7 @@ function drawTrend() {
   els.chartCityLabel.textContent = `${item.city} 未来 48 小时量化气象趋势`;
 
   const rows = item.hourly.slice(0, DASHBOARD_HOURS);
-  const padding = { left: 46, right: 160, top: 28, bottom: 42 };
+  const padding = { left: 46, right: 22, top: 28, bottom: 42 };
   const plotW = width - padding.left - padding.right;
   const plotH = height - padding.top - padding.bottom;
 
@@ -598,8 +601,9 @@ function drawTrend() {
     { field: "shortwave_radiation", label: "辐照", unit: "W/m²", color: "#d99a22" },
     { field: "wind_gusts_10m", label: "阵风", unit: "m/s", color: "#287f83" },
   ];
-  const seriesResults = series.map((itemSeries) => drawSeries(ctx, rows, itemSeries, padding, plotW, plotH));
-  drawRightLegend(ctx, seriesResults.filter(Boolean), width, height, padding);
+  const visibleSeries = series.filter((itemSeries) => state.trendVisibleSeries.has(itemSeries.field));
+  const seriesResults = visibleSeries.map((itemSeries) => drawSeries(ctx, rows, itemSeries, padding, plotW, plotH));
+  renderTrendLegend(series, seriesResults.filter(Boolean));
 
   drawTimeAxis(ctx, rows, width, height, padding, plotW);
 }
@@ -716,6 +720,42 @@ function drawTimeAxis(ctx, rows, width, height, padding, plotW) {
   ticks.forEach((index) => {
     const x = padding.left + (index / Math.max(rows.length - 1, 1)) * plotW;
     ctx.fillText(shortTime(rows[index].time), Math.min(x, width - padding.right - 74), height - 16);
+  });
+}
+
+function renderTrendLegend(series, seriesResults) {
+  const resultByField = new Map(seriesResults.map((item) => [item.field, item]));
+  els.trendLegend.innerHTML = `
+    <div class="trend-legend-title">图例 / 最新值</div>
+    ${series.map((item) => {
+      const result = resultByField.get(item.field);
+      const active = state.trendVisibleSeries.has(item.field);
+      return `
+        <button class="trend-legend-item ${active ? "active" : "muted"}" type="button" data-field="${item.field}" aria-pressed="${active}">
+          <span class="legend-swatch" style="--series-color:${item.color}"></span>
+          <span class="legend-main">
+            <strong>${item.label}</strong>
+            <em>${result ? `${fmt(result.latest)}${item.unit}` : "--"}</em>
+            <small>${result ? `区间 ${fmt(result.min)}-${fmt(result.max)}` : "已隐藏"}</small>
+          </span>
+        </button>
+      `;
+    }).join("")}
+  `;
+
+  els.trendLegend.querySelectorAll(".trend-legend-item").forEach((button) => {
+    button.addEventListener("click", () => {
+      const field = button.dataset.field;
+      const nextVisible = new Set(state.trendVisibleSeries);
+      if (nextVisible.has(field)) {
+        if (nextVisible.size === 1) return;
+        nextVisible.delete(field);
+      } else {
+        nextVisible.add(field);
+      }
+      state.trendVisibleSeries = nextVisible;
+      drawTrend();
+    });
   });
 }
 
