@@ -937,7 +937,7 @@ function renderSpotCharts() {
     const spread = Number.isFinite(dayAhead) && Number.isFinite(realtime) ? realtime - dayAhead : null;
     return {
       ...row,
-      spotTimeLabel: `${normalizeExcelDate(row["日期"]).slice(5)} ${String(row["小时"]).padStart(2, "0")}:00`,
+      spotTimeLabel: `${normalizeExcelDate(row["日期"])} ${String(row["小时"]).padStart(2, "0")}:00`,
       "正价差": spread > 0 ? spread : null,
       "负价差": spread < 0 ? spread : null,
     };
@@ -1013,7 +1013,7 @@ function buildSpotHourlyRange(start, end) {
     .flatMap((date) => (spotState.hourly96.get(date) ?? []).map((row) => ({
       ...row,
       date,
-      spotTimeLabel: `${date.slice(5)} ${String(row.hour).padStart(2, "0")}:00`,
+      spotTimeLabel: `${date} ${String(row.hour).padStart(2, "0")}:00`,
     })));
 }
 
@@ -1032,18 +1032,25 @@ function drawMultiLineChart(canvas, rows, series, xField) {
     drawEmptyChart(ctx, w, h, "暂无数据");
     return;
   }
-  const pad = { left: 50, right: 170, top: 26, bottom: 42 };
-  const plotW = w - pad.left - pad.right;
-  const plotH = h - pad.top - pad.bottom;
-  if (isSpot) drawSpotGrid(ctx, w, h, pad);
-  else drawGrid(ctx, w, h, pad);
-
   const lineSeries = series.filter((s) => s.type !== "bar");
   const barSeries = series.filter((s) => s.type === "bar");
   const allValues = lineSeries.flatMap((s) => rows.map((r) => Number(r[s.field])).filter(Number.isFinite));
+  if (!allValues.length) {
+    drawEmptyChart(ctx, w, h, "暂无数据");
+    return;
+  }
   const minVal = Math.min(...allValues);
   const maxVal = Math.max(...allValues);
   const range = maxVal - minVal || 1;
+  const pad = isSpot ? { left: 78, right: 170, top: 26, bottom: 42 } : { left: 50, right: 170, top: 26, bottom: 42 };
+  const plotW = w - pad.left - pad.right;
+  const plotH = h - pad.top - pad.bottom;
+  if (isSpot) {
+    drawSpotGrid(ctx, w, h, pad);
+    drawSpotYAxis(ctx, pad, plotH, minVal, range);
+  }
+  else drawGrid(ctx, w, h, pad);
+
   const legends = [];
   if (barSeries.length) {
     drawSpreadBars(ctx, rows, barSeries, pad, plotW, plotH);
@@ -1074,12 +1081,18 @@ function drawMultiLineChart(canvas, rows, series, xField) {
   else drawRightLegend(ctx, legends, w, h, pad);
   ctx.fillStyle = isSpot ? "#9db4c9" : "#6d7971";
   ctx.font = "12px Microsoft YaHei, sans-serif";
-  const tickIndexes = buildTickIndexes(rows.length);
+  const tickIndexes = isSpot ? buildSpotTickIndexes(rows, xField) : buildTickIndexes(rows.length);
   tickIndexes.forEach((i) => {
     if (!rows[i]) return;
     const x = pad.left + (i / Math.max(rows.length - 1, 1)) * plotW;
-    const label = rows[i][xField] ?? `${String(i).padStart(2, "0")}:00`;
-    ctx.fillText(String(label), Math.min(x, w - pad.right - 76), h - 16);
+    const label = isSpot ? formatSpotXAxisLabel(rows[i][xField], rows.length) : (rows[i][xField] ?? `${String(i).padStart(2, "0")}:00`);
+    if (isSpot) {
+      ctx.textAlign = "center";
+      ctx.fillText(String(label), Math.min(Math.max(x, pad.left + 18), w - pad.right - 18), h - 16);
+    }
+    else {
+      ctx.fillText(String(label), Math.min(x, w - pad.right - 76), h - 16);
+    }
   });
 }
 
@@ -1087,6 +1100,22 @@ function buildTickIndexes(length) {
   if (length <= 24) return [0, 3, 6, 9, 12, 15, 18, 21, 23].filter((index) => index < length);
   const count = 8;
   return Array.from({ length: count }, (_, index) => Math.round((index / (count - 1)) * (length - 1)));
+}
+
+function buildSpotTickIndexes(rows, xField) {
+  if (rows.length <= 24) return buildTickIndexes(rows.length);
+  const dayStartIndexes = rows
+    .map((row, index) => ({ label: String(row[xField] ?? ""), index }))
+    .filter((item) => item.label.endsWith("00:00"))
+    .map((item) => item.index);
+  return dayStartIndexes.length ? dayStartIndexes : buildTickIndexes(rows.length);
+}
+
+function formatSpotXAxisLabel(label, rowCount) {
+  const text = String(label ?? "");
+  if (rowCount <= 24) return text.slice(11) || text;
+  const match = text.match(/^\d{4}-(\d{2}-\d{2})/);
+  return match ? match[1] : text;
 }
 
 function drawSpotGrid(ctx, width, height, padding) {
@@ -1104,7 +1133,33 @@ function drawSpotGrid(ctx, width, height, padding) {
   }
   ctx.fillStyle = "#9db4c9";
   ctx.font = "12px Microsoft YaHei, sans-serif";
+  ctx.textAlign = "left";
+  ctx.textBaseline = "alphabetic";
   ctx.fillText("价格 / 价差", 14, padding.top + 4);
+}
+
+function drawSpotYAxis(ctx, padding, plotH, minVal, range) {
+  ctx.save();
+  ctx.fillStyle = "#9db4c9";
+  ctx.font = "12px Microsoft YaHei, sans-serif";
+  ctx.textAlign = "right";
+  ctx.textBaseline = "middle";
+  for (let i = 0; i <= 5; i += 1) {
+    const value = minVal + range * (1 - i / 5);
+    const y = padding.top + i * (plotH / 5);
+    ctx.fillText(formatAxisTick(value), padding.left - 12, y);
+  }
+  ctx.restore();
+}
+
+function formatAxisTick(value) {
+  if (!Number.isFinite(value)) return "--";
+  const abs = Math.abs(value);
+  const digits = abs >= 100 ? 0 : abs >= 10 ? 1 : 2;
+  return value.toLocaleString("zh-CN", {
+    maximumFractionDigits: digits,
+    minimumFractionDigits: 0,
+  });
 }
 
 function drawSpreadBars(ctx, rows, barSeries, padding, plotW, plotH) {
