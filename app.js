@@ -371,13 +371,12 @@ async function fetchCityWithRetry(city, latitude, longitude, retries = 1) {
 }
 
 async function fetchCity(city, latitude, longitude) {
-  if (state.selectedDate === isoDate(new Date())) {
-    return fetchCityForecast(city, latitude, longitude);
-  }
-
   try {
     return await fetchCityForSelectedDate(city, latitude, longitude);
   } catch (error) {
+    if (state.selectedDate === isoDate(new Date())) {
+      return fetchCityForecast(city, latitude, longitude);
+    }
     throw error;
   }
 }
@@ -422,22 +421,21 @@ function normalizeCityData(city, payload) {
   const hourly = toRows(city, payload.hourly, "time", HOURLY_FIELDS, DASHBOARD_HOURS);
   const daily = toRows(city, payload.daily, "date", DAILY_FIELDS, 7);
   const dayRows = rowsForDate(hourly, state.selectedDate);
-  const daySample = dayRows.find((row) => String(row.time).includes("T12:")) ?? dayRows[0] ?? {};
   const current = {
     city,
-    time: daySample.time ?? payload.current?.time,
-    weather: weatherText(daySample.weather_code ?? payload.current?.weather_code),
-    temperature: daySample.temperature_2m ?? payload.current?.temperature_2m,
-    apparentTemperature: daySample.apparent_temperature ?? payload.current?.apparent_temperature,
-    humidity: daySample.relative_humidity_2m ?? payload.current?.relative_humidity_2m,
-    precipitation: payload.current?.precipitation,
-    rain: payload.current?.rain,
-    cloudCover: daySample.cloud_cover ?? payload.current?.cloud_cover,
-    shortwaveRadiation: daySample.shortwave_radiation ?? payload.current?.shortwave_radiation,
+    time: state.selectedDate,
+    weather: dayWeatherText(dayRows, payload.current?.weather_code),
+    temperature: average(dayRows, "temperature_2m") ?? payload.current?.temperature_2m,
+    apparentTemperature: max(dayRows, "apparent_temperature") ?? payload.current?.apparent_temperature,
+    humidity: average(dayRows, "relative_humidity_2m") ?? payload.current?.relative_humidity_2m,
+    precipitation: sum(dayRows, "precipitation") ?? payload.current?.precipitation,
+    rain: sum(dayRows, "rain") ?? payload.current?.rain,
+    cloudCover: average(dayRows, "cloud_cover") ?? payload.current?.cloud_cover,
+    shortwaveRadiation: sum(dayRows, "shortwave_radiation") ?? payload.current?.shortwave_radiation,
     pressure: payload.current?.pressure_msl,
-    windSpeed: daySample.wind_speed_10m ?? payload.current?.wind_speed_10m,
-    windDirection: daySample.wind_direction_10m ?? payload.current?.wind_direction_10m,
-    windGusts: daySample.wind_gusts_10m ?? payload.current?.wind_gusts_10m,
+    windSpeed: average(dayRows, "wind_speed_10m") ?? payload.current?.wind_speed_10m,
+    windDirection: average(dayRows, "wind_direction_10m") ?? payload.current?.wind_direction_10m,
+    windGusts: max(dayRows, "wind_gusts_10m") ?? payload.current?.wind_gusts_10m,
   };
 
   const risk = {
@@ -484,7 +482,7 @@ function renderMetrics() {
 
 function renderTable() {
   const copy = {
-    current: ["城市当前天气", "按电力市场关注度排序，突出负荷和运行风险。"],
+    current: ["城市今日天气", "按电力市场关注度排序，展示今天 24 小时聚合天气。"],
     hourly: ["未来 48 小时预报", "展示各城市 48 小时温度、降水、辐射和风况变化。"],
     daily: ["未来 7 天趋势", "用于中期负荷、新能源出力和天气风险判断。"],
   };
@@ -502,7 +500,7 @@ function renderCurrentTable() {
     .sort((a, b) => b.avgRadiation - a.avgRadiation);
 
   renderTableFrame(
-    ["城市", "当天辐照", "当天平均辐照", "当天峰值辐照", "温度", "体感", "湿度", "云量", "风速", "阵风", "风险"],
+    ["城市", "当天辐照", "当天平均辐照", "当天峰值辐照", "平均温度", "最高体感", "平均湿度", "平均云量", "平均风速", "最大阵风", "风险"],
     rows.map((row) => [
       row.city,
       withUnit(row.dayRadiation, "W/m²"),
@@ -1464,6 +1462,15 @@ function riskPill(level) {
 
 function weatherText(code) {
   return WEATHER_CODE_CN[Number(code)] ?? `代码 ${code ?? "--"}`;
+}
+
+function dayWeatherText(rows, fallbackCode) {
+  const codes = rows.map((row) => Number(row.weather_code)).filter(Number.isFinite);
+  if (!codes.length) return weatherText(fallbackCode);
+  const counts = new Map();
+  codes.forEach((code) => counts.set(code, (counts.get(code) ?? 0) + 1));
+  const dominantCode = [...counts.entries()].sort((a, b) => b[1] - a[1])[0][0];
+  return weatherText(dominantCode);
 }
 
 function max(rows, field) {
